@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trichy Gold Unpurchased Feedback Recorder</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background-color: #fafafa;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    h2 {
+      margin-bottom: 15px;
+    }
+
+    button {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 14px 22px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+
+    button:hover {
+      background: #43a047;
+      transform: scale(1.03);
+    }
+
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 20px;
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .recording {
+      color: #f44336;
+    }
+
+    .processing {
+      color: #ff9800;
+    }
+
+    .success {
+      color: #4caf50;
+    }
+
+    .error {
+      color: #e53935;
+    }
+
+    .wave {
+      display: inline-block;
+      margin-left: 10px;
+      color: #4caf50;
+      font-weight: bold;
+    }
+
+    .button-container {
+      display: flex;
+      gap: 10px;
+      margin: 20px 0;
+      justify-content: center;
+    }
+
+    .button-container button {
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .button-container button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #recordBtn {
+      background: #4CAF50;
+      color: white;
+    }
+
+    #stopBtn {
+      background: #f44336;
+      color: white;
+    }
+
+    #completeBtn {
+      background: #2196F3;
+      color: white;
+    }
+
+    .image-upload-section {
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .image-label {
+      display: inline-block;
+      padding: 10px 20px;
+      background: #FF9800;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.3s ease;
+    }
+
+    .image-label:hover {
+      background: #F57C00;
+    }
+
+    .image-preview {
+      margin-top: 10px;
+      max-width: 300px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .image-preview img {
+      max-width: 100%;
+      max-height: 200px;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+  <h2>Trichy Gold Customer Feedback Recorder</h2>
+  <div class="button-container">
+    <button id="recordBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+    <button id="completeBtn" disabled>Complete & Upload</button>
+  </div>
+  
+  <div class="image-upload-section">
+    <label for="imageUpload" class="image-label">Upload Image (Optional)</label>
+    <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+    <div id="imagePreview" class="image-preview"></div>
+  </div>
+  
+  <p id="status" class="status">Press "Start Recording" to begin capturing customer feedback.</p>
+
+  <script>
+    let mediaRecorder;
+    let chunks = [];
+    let isRecording = false;
+    let hasRecorded = false;
+    let selectedImage = null;
+
+    async function processAudio(formData) {
+      try {
+        const response = await fetch("/process_audio", {
+          method: "POST",
+          body: formData
+        });
+
+        const result = await response.json();
+        const status = document.getElementById("status");
+
+        if (response.ok) {
+          status.textContent = "Data saved successfully to MongoDB.";
+          status.className = "status success";
+          // Reset for next recording
+          resetButtons();
+        } else {
+          status.textContent = "Server error: " + result.detail;
+          status.className = "status error";
+        }
+      } catch (err) {
+        const status = document.getElementById("status");
+        status.textContent = "Failed to connect to backend: " + err.message;
+        status.className = "status error";
+      }
+    }
+
+    function resetButtons() {
+      document.getElementById("recordBtn").disabled = false;
+      document.getElementById("stopBtn").disabled = true;
+      document.getElementById("completeBtn").disabled = true;
+      isRecording = false;
+      hasRecorded = false;
+      chunks = [];
+      // Don't reset image - user might want to reuse it
+    }
+
+    function updateButtonStates() {
+      const recordBtn = document.getElementById("recordBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const completeBtn = document.getElementById("completeBtn");
+
+      if (isRecording) {
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+        completeBtn.disabled = true;
+      } else if (hasRecorded) {
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+        completeBtn.disabled = false;
+      } else {
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+        completeBtn.disabled = true;
+      }
+    }
+
+    // Image upload handling
+    document.getElementById("imageUpload").addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        selectedImage = file;
+        const preview = document.getElementById("imagePreview");
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          preview.innerHTML = `<img src="${e.target.result}" alt="Selected image">`;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Start Recording Button
+    document.getElementById("recordBtn").onclick = async () => {
+      const status = document.getElementById("status");
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        chunks = [];
+
+        mediaRecorder.ondataavailable = e => chunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          hasRecorded = true;
+          updateButtonStates();
+          status.textContent = "Recording stopped. Click 'Complete & Upload' to process.";
+          status.className = "status";
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        updateButtonStates();
+        status.className = "status recording";
+
+        // Add wave animation
+        let remaining = 25;
+        const wave = document.createElement("span");
+        wave.className = "wave";
+        wave.innerHTML = "● ● ● ● ●";
+        status.innerHTML = `Recording audio... (${remaining}s remaining) `;
+        status.appendChild(wave);
+
+        let wavePhase = 0;
+        const waveAnim = setInterval(() => {
+          wave.innerHTML = "● ● ● ● ●"
+            .split(" ")
+            .map((dot, i) =>
+              i === wavePhase % 5 ? `<span style="color:#f44336;">${dot}</span>` : dot
+            )
+            .join(" ");
+          wavePhase++;
+        }, 200);
+
+        // Countdown timer
+        const countdown = setInterval(() => {
+          remaining--;
+          if (remaining > 0 && isRecording) {
+            status.innerHTML = `Recording audio... (${remaining}s remaining) `;
+            status.appendChild(wave);
+          } else {
+            clearInterval(countdown);
+          }
+        }, 1000);
+
+        // Auto stop after 25s
+        setTimeout(() => {
+          if (mediaRecorder.state === "recording") {
+            mediaRecorder.stop();
+            isRecording = false;
+            updateButtonStates();
+            status.textContent = "Recording auto-stopped after 25 seconds. Click 'Complete & Upload' to process.";
+            status.className = "status";
+          }
+          clearInterval(waveAnim);
+          clearInterval(countdown);
+        }, 25000);
+
+      } catch (error) {
+        status.textContent = "Error accessing microphone: " + error.message;
+        status.className = "status error";
+        isRecording = false;
+        updateButtonStates();
+      }
+    };
+
+    // Stop Recording Button
+    document.getElementById("stopBtn").onclick = () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        isRecording = false;
+        updateButtonStates();
+        const status = document.getElementById("status");
+        status.textContent = "Recording stopped manually. Click 'Complete & Upload' to process.";
+        status.className = "status";
+      }
+    };
+
+    // Complete & Upload Button
+    document.getElementById("completeBtn").onclick = async () => {
+      if (chunks.length > 0) {
+        const status = document.getElementById("status");
+        status.textContent = "Processing audio...";
+        status.className = "status processing";
+
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const file = new File([blob], "feedback.webm", { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append("file", file);
+        
+        // Add image if selected
+        if (selectedImage) {
+          formData.append("image", selectedImage);
+        }
+        
+        await processAudio(formData);
+      }
+    };
+
+    // Initialize button states
+    updateButtonStates();
+  </script>
+</body>
+</html>
