@@ -36,9 +36,8 @@ app.add_middleware(
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the frontend HTML page"""
-    with open("frontend.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    """Serve the dashboard page"""
+    return FileResponse("dashboard.html")
 
 @app.get("/api")
 async def api_info():
